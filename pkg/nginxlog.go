@@ -90,7 +90,7 @@ func (p *Plugin) Fields() []sdk.FieldEntry {
 }
 
 func (p *Plugin) Extract(req sdk.ExtractRequest, evt sdk.EventReader) error {
-	data, err := sdk.ReadAll(evt.Reader())
+	data, err := io.ReadAll(evt.Reader())
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (p *Plugin) Extract(req sdk.ExtractRequest, evt sdk.EventReader) error {
 	if len(parts) >= 2 {
 		tokens := strings.Fields(parts[1])
 		if len(tokens) >= 2 {
-			req.SetValue(tokens[1])
+			req.SetValue(tokens[1]) // URI
 			return nil
 		}
 	}
