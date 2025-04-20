@@ -1,0 +1,6 @@
+- rule: Detect admin access
+  desc: Match requests to /admin
+  condition: nginx.uri contains "admin"
+  output: "admin accessed"
+  priority: WARNING
+  source: nginx

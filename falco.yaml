@@ -1,0 +1,11 @@
+plugins:
+  - name: nginxlog
+    library_path: /full/path/to/libnginxlog.so
+    open_params: "/var/log/nginx/access.log"
+
+load_plugins: [nginxlog]
+load_syscall_source: false
+
+stdout_output:
+  enabled: true
+  priority: debug
