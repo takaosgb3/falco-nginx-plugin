@@ -1,4 +1,4 @@
-module github.com/youruser/falco-nginx-plugin
+module github.com/takaosgb3/falco-nginx-plugin
 
 go 1.24.2
 
