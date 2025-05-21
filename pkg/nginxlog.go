@@ -1,13 +1,15 @@
 package main
 
 import (
-	"io"
-	"bufio"
-	"context"
-	"fmt"
-	"os"
-	"strings"
-	"time"
+        "io"
+        "bufio"
+        "context"
+        "errors"
+        "fmt"
+        "log"
+        "os"
+        "strings"
+        "time"
 
 	"github.com/falcosecurity/plugin-sdk-go/pkg/sdk"
 	"github.com/falcosecurity/plugin-sdk-go/pkg/sdk/plugins"
@@ -50,33 +52,62 @@ func (p *Plugin) Open(prms string) (source.Instance, error) {
 	if prms != "" {
 		logFile = prms
 	}
-	f, err := os.Open(logFile)
-	if err != nil {
-		return nil, fmt.Errorf("cannot open log file: %s", err)
-	}
-	go func() {
-		r := bufio.NewReader(f)
-		for {
-			line, err := r.ReadString('\n')
-			if err != nil {
-				time.Sleep(200 * time.Millisecond)
-				continue
-			}
-			p.eventChan <- strings.TrimSpace(line)
-		}
-	}()
+        f, err := os.Open(logFile)
+        if err != nil {
+                return nil, fmt.Errorf("cannot open log file: %w", err)
+        }
+        bgCtx, cancel := context.WithCancel(context.Background())
+        go func() {
+                defer f.Close()
+                r := bufio.NewReader(f)
+                var prevSize int64
+                for {
+                        select {
+                        case <-bgCtx.Done():
+                                return
+                        default:
+                                line, err := r.ReadString('\n')
+                                if err != nil {
+                                        if !errors.Is(err, io.EOF) {
+                                                log.Printf("read error: %v", err)
+                                        }
+                                        time.Sleep(200 * time.Millisecond)
+                                        fi, serr := os.Stat(logFile)
+                                        if serr == nil {
+                                                if fi.Size() < prevSize {
+                                                        f.Close()
+                                                        f, err = os.Open(logFile)
+                                                        if err != nil {
+                                                                log.Printf("reopen failed: %v", err)
+                                                        } else {
+                                                                r = bufio.NewReader(f)
+                                                                prevSize = 0
+                                                        }
+                                                } else {
+                                                        prevSize = fi.Size()
+                                                }
+                                        } else {
+                                                log.Printf("stat error: %v", serr)
+                                        }
+                                        continue
+                                }
+                                prevSize += int64(len(line))
+                                p.eventChan <- strings.TrimSpace(line)
+                        }
+                }
+        }()
 
-	pull := func(ctx context.Context, evt sdk.EventWriter) error {
-		select {
-		case <-ctx.Done():
-			f.Close()
-			return ctx.Err()
-		case line := <-p.eventChan:
-			evt.SetTimestamp(uint64(time.Now().UnixNano()))
-			evt.Writer().Write([]byte(line))
-			return nil
-		}
-	}
+        pull := func(ctx context.Context, evt sdk.EventWriter) error {
+                select {
+                case <-ctx.Done():
+                        cancel()
+                        return ctx.Err()
+                case line := <-p.eventChan:
+                        evt.SetTimestamp(uint64(time.Now().UnixNano()))
+                        evt.Writer().Write([]byte(line))
+                        return nil
+                }
+        }
 	return source.NewPullInstance(pull)
 }
 
